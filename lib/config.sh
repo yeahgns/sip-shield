@@ -1,0 +1,53 @@
+#!/bin/bash
+# ============================================================
+#  config.sh — Central configuration for SIP Shield.
+#
+#  Nothing here should be a real production value. Everything
+#  is read from environment variables, with safe generic
+#  defaults, so the same code works for any deployment without
+#  editing the scripts themselves.
+#
+#  Set these before running install.sh, e.g.:
+#
+#    export SIP_SHIELD_COUNTRY="BR"
+#    export SIP_SHIELD_WHITELIST_IPS="203.0.113.10,203.0.113.11"
+#    bash install.sh
+# ============================================================
+
+# ISO 3166-1 alpha-2 country code whose IP ranges are allowed
+# through the SIP port. Everything else gets dropped.
+#
+# No default on purpose — you must set this explicitly, so the
+# target country is always a deliberate choice, not an assumption.
+if [[ -z "${SIP_SHIELD_COUNTRY:-}" ]]; then
+    echo "[ERROR] SIP_SHIELD_COUNTRY is not set." >&2
+    echo "        Set it to the ISO 3166-1 alpha-2 code of the country you want to allow, e.g.:" >&2
+    echo "        export SIP_SHIELD_COUNTRY=\"BR\"" >&2
+    exit 1
+fi
+SIP_SHIELD_COUNTRY="${SIP_SHIELD_COUNTRY}"
+
+# Comma-separated list of IPs that must always be allowed,
+# regardless of country — typically your SIP trunk provider(s).
+# Example: export SIP_SHIELD_WHITELIST_IPS="203.0.113.10,203.0.113.11"
+SIP_SHIELD_WHITELIST_IPS="${SIP_SHIELD_WHITELIST_IPS:-}"
+
+# Optional file with one known-bad IP per line, pre-banned at
+# install time. See lib/known-ips.txt.example for the format.
+SIP_SHIELD_KNOWN_IPS_FILE="${SIP_SHIELD_KNOWN_IPS_FILE:-$SCRIPT_DIR/lib/known-ips.txt}"
+
+# fail2ban tuning
+SIP_SHIELD_MAXRETRY="${SIP_SHIELD_MAXRETRY:-5}"
+SIP_SHIELD_FINDTIME="${SIP_SHIELD_FINDTIME:-60}"
+SIP_SHIELD_BANTIME="${SIP_SHIELD_BANTIME:-604800}"   # 7 days, in seconds
+
+# Name of the ipset used to hold the allowed country's ranges
+BR_IPSET="allowed_ranges"
+
+get_whitelist_ips_array() {
+    local ips=()
+    if [[ -n "$SIP_SHIELD_WHITELIST_IPS" ]]; then
+        IFS=',' read -ra ips <<< "$SIP_SHIELD_WHITELIST_IPS"
+    fi
+    printf '%s\n' "${ips[@]}"
+}
