@@ -8,6 +8,9 @@ log_ban() {
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[$timestamp] BAN ip=$ip origin=$origin" >> "$LOG_FILE"
+    # Additive observability hooks — JSON log + webhook. No-ops if
+    # SIP_SHIELD_WEBHOOK_URL isn't set; JSON log always writes.
+    record_event "ban" "$ip" "$origin" 2>/dev/null || true
 }
 
 configure_fail2ban() {
@@ -70,10 +73,10 @@ EOF
 }
 
 setup_ban_action() {
-    cat > /etc/fail2ban/action.d/sip-shield-log.conf << 'EOF'
+    cat > /etc/fail2ban/action.d/sip-shield-log.conf << EOF
 [Definition]
-actionban = echo "[$(date '+%%Y-%%m-%%d %%H:%%M:%%S')] BAN ip=<ip> origin=fail2ban jail=<name>" >> /var/log/sip-shield.log
-actionunban = echo "[$(date '+%%Y-%%m-%%d %%H:%%M:%%S')] UNBAN ip=<ip> origin=fail2ban jail=<name>" >> /var/log/sip-shield.log
+actionban = echo "[\$(date '+%%Y-%%m-%%d %%H:%%M:%%S')] BAN ip=<ip> origin=fail2ban jail=<name>" >> /var/log/sip-shield.log; bash ${SCRIPT_DIR}/lib/record-event.sh ban <ip> fail2ban >/dev/null 2>&1 || true
+actionunban = echo "[\$(date '+%%Y-%%m-%%d %%H:%%M:%%S')] UNBAN ip=<ip> origin=fail2ban jail=<name>" >> /var/log/sip-shield.log; bash ${SCRIPT_DIR}/lib/record-event.sh unban <ip> fail2ban >/dev/null 2>&1 || true
 EOF
 
     if ! grep -q 'sip-shield-log' /etc/fail2ban/jail.local 2>/dev/null; then

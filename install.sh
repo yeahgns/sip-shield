@@ -20,6 +20,7 @@ source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/detect.sh"
 source "$SCRIPT_DIR/lib/fail2ban.sh"
 source "$SCRIPT_DIR/lib/geoip.sh"
+source "$SCRIPT_DIR/lib/metrics.sh"
 
 echo ""
 echo "============================================================================="
@@ -64,6 +65,19 @@ CRON_JOB="0 3 1 * * root $SCRIPT_DIR/lib/update.sh >> /var/log/sip-shield-update
 if ! grep -q "sip-shield" /etc/crontab 2>/dev/null; then
     echo "$CRON_JOB" >> /etc/crontab
     echo "[+] Cron configured (1st of every month at 03:00)"
+fi
+
+echo "[*] Persisting configuration for cron/fail2ban use..."
+persist_config
+
+echo "[*] Writing Prometheus metrics..."
+write_prometheus_metrics && echo "[+] Metrics written to ${PROM_TEXTFILE}"
+
+echo "[*] Setting up metrics refresh (every 5 minutes)..."
+METRICS_CRON_JOB="*/5 * * * * root $SCRIPT_DIR/lib/stats.sh --refresh-only >> /var/log/sip-shield-metrics.log 2>&1"
+if ! grep -q "sip-shield.*stats.sh --refresh-only" /etc/crontab 2>/dev/null; then
+    echo "$METRICS_CRON_JOB" >> /etc/crontab
+    echo "[+] Metrics refresh cron configured (every 5 minutes)"
 fi
 
 echo ""
