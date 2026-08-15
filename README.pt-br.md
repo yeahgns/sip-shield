@@ -127,9 +127,71 @@ sip-shield/
     ├── detect.sh
     ├── fail2ban.sh
     ├── geoip.sh
+    ├── metrics.sh
+    ├── record-event.sh
+    ├── stats.sh
     ├── update.sh
     └── known-ips.txt.example
 ```
+
+## Observabilidade
+
+Três saídas aditivas, nenhuma delas muda a lógica de bloqueio, e todas são seguras de deixar desativadas.
+
+**Resumo legível pra humano**
+
+```bash
+bash lib/stats.sh
+```
+
+```
+SIP Shield
+────────────────────────────────────────
+Target country:        BR
+SIP port:               5060
+Allowed ranges loaded:  12927
+Packets dropped:        128291
+Data dropped:           9.37 MB
+Currently banned (f2b): 7
+Total bans logged:      42
+────────────────────────────────────────
+```
+
+**Métricas Prometheus**
+
+Escritas automaticamente em `SIP_SHIELD_PROM_TEXTFILE_DIR` (padrão `/var/lib/sip-shield/metrics/sip_shield.prom`) na instalação, e atualizadas a cada 5 minutos via entrada de cron que o `install.sh` configura. Aponta o textfile collector do node_exporter pra esse diretório e o Prometheus pega as métricas no scrape normal dele, o Grafana então lê do Prometheus, sem integração separada com Grafana:
+
+```bash
+export SIP_SHIELD_PROM_TEXTFILE_DIR="/var/lib/node_exporter/textfile_collector"  # exemplo
+```
+
+Métricas expostas: `sip_shield_geoip_dropped_packets_total`, `sip_shield_geoip_dropped_bytes_total`, `sip_shield_allowed_country_ranges`, `sip_shield_fail2ban_banned_ips`, `sip_shield_known_ips_loaded`, `sip_shield_bans_logged_total`.
+
+**Log JSON estruturado**
+
+Todo ban/unban também é logado como um objeto JSON por linha, junto do log em texto já existente, pega isso com qualquer log shipper ou SIEM que consiga acompanhar um arquivo (Filebeat, Wazuh, Splunk forwarder, etc.):
+
+```bash
+export SIP_SHIELD_JSON_LOG="/var/log/sip-shield.jsonl"  # padrão mostrado
+```
+
+```json
+{"timestamp":"2026-06-12T13:45:22Z","event":"ban","ip":"203.0.113.50","origin":"fail2ban"}
+```
+
+**Webhook genérico**
+
+Dispara um POST em JSON a cada ban/unban se configurado, funciona com Telegram (via um relay compatível com `sendMessage` de um bot), webhooks de entrada do Slack, webhooks do Discord, ou qualquer endpoint customizado:
+
+```bash
+export SIP_SHIELD_WEBHOOK_URL="https://seu-endpoint.exemplo/webhook"
+```
+
+A chamada do webhook é fire-and-forget: um endpoint falho ou lento nunca bloqueia ou atrasa o ban/unban real.
+
+## Persistência de configuração
+
+O `install.sh` grava a configuração resolvida em `/etc/sip-shield/config.env` (permissão `600`, já que pode conter uma URL de webhook) no final de uma execução com sucesso. Isso existe porque o `lib/update.sh` (via cron) e a action de ban/unban do fail2ban não herdam variáveis de ambiente da sua sessão de terminal, sem isso, os dois falhariam silenciosamente em achar `SIP_SHIELD_COUNTRY` fora da sessão de instalação. Variável de ambiente na sessão atual sempre tem prioridade sobre esse arquivo, ele é só um fallback pra contextos não-interativos.
 
 ## Limitações conhecidas
 
@@ -137,6 +199,7 @@ sip-shield/
 - Dado de IP-pra-país (RIPE NCC, nessa implementação) não é perfeitamente preciso nem instantâneo. Ranges são realocados entre regiões com o tempo, por isso existe a atualização mensal, mas sempre tem alguma defasagem.
 - Testado especificamente em Issabel sobre CentOS 7 e Rocky Linux 8. Outras distribuições baseadas em Asterisk provavelmente funcionam com pequenos ajustes em `lib/detect.sh` e nas chamadas de gerenciador de pacote em `install.sh`.
 - Só IPv4, na versão atual.
+- Sem detalhamento por país de atacante ("top países atacantes"), esse projeto só sabe se o IP de origem de um pacote *é ou não é* do país permitido, não sabe qual país um pacote bloqueado realmente veio. Isso exigiria uma base completa de IP-pra-país (ex: MaxMind GeoLite2) em vez da lista de ranges de um único país do RIPE NCC, decisão deliberada de escopo, não uma omissão.
 
 ## Licença
 
