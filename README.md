@@ -200,7 +200,3 @@ The webhook call is fire-and-forget: a failed or slow endpoint never blocks or d
 - Tested specifically on Issabel over CentOS 7 and Rocky Linux 8. Other Asterisk-based distributions likely work with minor adjustments to `lib/detect.sh` and the package manager calls in `install.sh`.
 - IPv4 only, in the current version.
 - No per-attacker country breakdown ("top attacking countries") — this project only knows whether a packet's source *is or isn't* in the allowed country, not which country a blocked packet actually came from. That would require a full IP-to-country database (e.g. MaxMind GeoLite2) instead of RIPE NCC's single-country range list — a deliberate scope decision, not an oversight.
-
-## License
-
-MIT
