@@ -1,4 +1,7 @@
 #!/bin/bash
+# ============================================================================
+#  detect.sh — Environment detection helpers.
+# ============================================================================
 
 detect_distro() {
     if [ -f /etc/rocky-release ]; then
@@ -10,17 +13,11 @@ detect_distro() {
     fi
 }
 
-detect_sip_port() {
-    local port
-    # Grabs the lowest UDP port Asterisk is listening on — SIP signaling
-    # always uses a low port, while RTP media uses a much higher range
-    # (typically 10000+), so sorting ascending reliably picks SIP first,
-    # regardless of which specific port number is configured.
-    port=$(netstat -unlp 2>/dev/null | grep asterisk | awk '{print $4}' | grep -oE '[0-9]+$' | sort -n | head -1)
-    if [ -z "$port" ]; then
-        port=$(ss -unlp 2>/dev/null | grep asterisk | awk '{print $5}' | grep -oE '[0-9]+$' | sort -n | head -1)
-    fi
-    echo "${port:-5060}"
+# Informational only: GeoIP blocks ALL ports, so changing the SIP/PJSIP port
+# (5060, 5066, a custom one...) requires no change to the rules.
+detect_asterisk_ports() {
+    ss -tulnp 2>/dev/null | awk '/"asterisk"/ {n=split($5,a,":"); print a[n]"/"$1}' \
+        | sort -t/ -k1,1n -u | tr '\n' ' '
 }
 
 detect_asterisk_logpath() {
@@ -39,12 +36,15 @@ detect_fail2ban_jail_exists() {
 
 print_env() {
     echo "================================"
-    echo " SIP Shield - Environment detection"
+    echo " SIP Shield — environment"
     echo "================================"
-    echo "Distro        : $(detect_distro)"
-    echo "SIP port      : $(detect_sip_port)"
-    echo "Asterisk log  : $(detect_asterisk_logpath)"
-    echo "f2b jail      : $(detect_fail2ban_jail_exists)"
-    echo "Target country: $SIP_SHIELD_COUNTRY"
+    echo "Distro         : $(detect_distro)"
+    echo "Asterisk ports : $(detect_asterisk_ports)"
+    echo "Asterisk log   : $(detect_asterisk_logpath)"
+    echo "f2b jail       : $(detect_fail2ban_jail_exists)"
+    echo "Target country : ${SIP_SHIELD_COUNTRY:-<unset>}"
+    echo "Trunks         : ${TRUNK_IPS:-<none>}"
+    echo "Trusted        : ${TRUSTED_IPS:-<none>}"
+    echo "Harden mgmt    : $([ "$HARDEN_MGMT_PORTS" = 1 ] && echo "yes ($MGMT_PORTS)" || echo "no")"
     echo "================================"
 }

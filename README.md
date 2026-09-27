@@ -2,30 +2,35 @@
 
 # SIP Shield
 
-GeoIP + fail2ban protection for Issabel/Asterisk PBX servers. Blocks SIP traffic from outside a target country at the network layer, before Asterisk even sees the packet, and adds fail2ban as a second line of defense against brute-force attempts.
+Plug-and-play, network-layer protection for Issabel/Asterisk PBX servers. It blocks connections from outside a target country **on every port**, before Asterisk (or MySQL, or the web panel) ever sees the packet, adds fail2ban as a second layer against brute force, and hardens management ports (MySQL/AMI) to localhost. One installer, an interactive wizard, and a single `sip-shield` command to run it all.
 
 ## Why this exists
 
-VoIP servers exposed to the public internet get hit constantly by automated SIP scanning and brute-force registration attempts, most of it from infrastructure with no legitimate reason to talk to the PBX. Application-layer defenses like fail2ban alone only kick in after a number of failed attempts, so every attacker still gets to probe the server directly before being blocked. Filtering by country at the network layer removes most of that traffic before it reaches Asterisk. fail2ban handles what's left, including attackers from inside the allowed country.
+Public-facing VoIP servers are hit constantly by automated SIP scanning and brute-force registration, almost all of it from infrastructure with no legitimate reason to reach the PBX. Application-layer defenses like fail2ban only react after several failed attempts, so every attacker still gets to probe the box first. Filtering by country at the network layer removes most of that traffic up front; fail2ban handles what's left, including attackers from inside the allowed country; and management-port hardening closes the admin services (MySQL, Asterisk Manager Interface) that don't belong on the public internet at all — the exact class of exposure that motivated this project.
 
 ## How it works
 
 ```
-SIP request arrives
-→ iptables checks: does the source IP belong to the target country?
-  (matched against an ipset populated from RIPE NCC data)
-  → No  → dropped immediately, Asterisk never sees it
-  → Yes → forwarded to Asterisk
-           → fail2ban watches for suspicious attempts
-           → bans after N failures within a time window
+New connection arrives (any port)
+ → loopback? / trunk? / trusted IP?      → ACCEPT
+ → source IP in the allowed country?      (ipset from RIPE NCC)
+     → No  → DROP (Asterisk/MySQL/web never see it)
+     → Yes → continue
+              → MySQL/AMI from non-localhost?  → DROP (management hardening)
+              → fail2ban watches for brute force → bans after N failures
 ```
+
+The GeoIP block sits at the very top of `INPUT` and only matches **new** connections, so established traffic is never interrupted and attackers with a steady UDP flow can't slip past a ban.
 
 ## What it does
 
-- **GeoIP via iptables/ipset**: blocks SIP traffic from outside a configurable target country
-- **fail2ban**: second layer, bans brute-force attempts from anywhere, including the allowed country
-- **Known-IPs pre-ban** (optional): a seed list of previously observed attacker IPs, banned at install time
-- **Automatic updates**: the target country's IP ranges refresh monthly via RIPE NCC, since allocations change over time
+- **GeoIP via iptables/ipset, all ports** — blocks new connections from outside the target country on every port and protocol. Changing the SIP/PJSIP port later requires no reconfiguration.
+- **Management-port hardening** — restricts MySQL (`3306`) and the Asterisk Manager Interface (`5038`) to localhost regardless of country, so an in-country attacker can't reach them either. On by default; configurable.
+- **fail2ban** — second layer, bans brute-force attempts from anywhere, including the allowed country. Loopback, trunks and trusted IPs are never banned by any jail.
+- **Atomic updates** — the target country's ranges refresh monthly via RIPE NCC using `ipset swap`, so there's never an unprotected window; if RIPE fails or returns a short list, the current ranges are kept.
+- **Anti-lockout** — if the IP you're connected from via SSH would be blocked, the install aborts before touching the firewall (override with `SIP_SHIELD_FORCE=1`).
+- **Known-IPs pre-ban** (optional) — seed a list of known-bad IPs to ban at install time.
+- **Observability** — structured JSON log, generic webhook, and Prometheus textfile metrics. All additive, all optional.
 
 ## Compatibility
 
@@ -34,7 +39,7 @@ SIP request arrives
 | CentOS 7 | Issabel 4 |
 | Rocky Linux 8 | Issabel 5 |
 
-SIP port detection is automatic and doesn't assume any specific port. Works whether Asterisk is on the default `5060` or a custom port.
+IPv4 only in the current version.
 
 ## Installation
 
@@ -43,160 +48,121 @@ git clone https://github.com/yeahgns/sip-shield.git
 cd sip-shield
 ```
 
-Configure your environment before running (see Configuration below), then:
+**Interactive wizard** (recommended for a single host):
 
 ```bash
+sudo bash install.sh --wizard
+```
+
+The wizard asks for the target country, trunk/trusted/customer IPs, management-port hardening, optional webhook, and fail2ban tuning, shows a summary, and applies everything.
+
+**Non-interactive** (automation / Ansible):
+
+```bash
+export SIP_SHIELD_COUNTRY="BR"                       # required, ISO 3166-1 alpha-2
+export SIP_SHIELD_TRUNK_IPS="203.0.113.10"            # SIP trunk provider(s)
+export SIP_SHIELD_TRUSTED_IPS="198.51.100.5"          # monitoring / admin box
 sudo bash install.sh
 ```
 
-## Configuration
+The installer is idempotent — re-running it (including on hosts still on the old per-port model) migrates to the current model without duplicating rules. Everything installs to `/opt/sip-shield`, so the clone can be deleted afterward.
 
-Nothing in the scripts contains a real IP, hostname, or company name. Everything is set via environment variables before running. `SIP_SHIELD_COUNTRY` has no default and must be set explicitly, the install stops with an error if it's missing, so the target country is always a deliberate choice:
+## The `sip-shield` command
 
-```bash
-export SIP_SHIELD_COUNTRY="BR"                                  # required — ISO 3166-1 alpha-2 country code to allow
-export SIP_SHIELD_WHITELIST_IPS="203.0.113.10,203.0.113.11"      # your SIP trunk provider(s), always allowed
-export SIP_SHIELD_MAXRETRY="5"                                  # optional, fail2ban tuning
-export SIP_SHIELD_FINDTIME="60"                                 # optional, seconds
-export SIP_SHIELD_BANTIME="604800"                               # optional, seconds (default: 7 days)
-
-sudo bash install.sh
-```
-
-If `SIP_SHIELD_WHITELIST_IPS` is left empty, no IP is exempt from the GeoIP/fail2ban rules. Set it if you have a SIP trunk provider outside the allowed country, otherwise your own trunk gets blocked.
-
-### Known-IPs pre-ban (optional)
-
-`lib/known-ips.txt.example` ships with a seed list of IPs previously observed attacking SIP servers in real deployments. It's a starting point, not a maintained blocklist. Attacker infrastructure changes constantly.
-
-To enable this step:
+Installed to `/usr/local/bin/sip-shield` — one entry point instead of remembering paths under `lib/`:
 
 ```bash
-cp lib/known-ips.txt.example lib/known-ips.txt
-# edit lib/known-ips.txt with IPs relevant to your own logs, if you'd like
+sip-shield status         # current state (country, ranges, drops, bans, hardening)
+sip-shield update         # refresh country ranges now and re-apply rules
+sip-shield ban <ip>       # ban an IP
+sip-shield unban <ip>     # unban an IP
+sip-shield banned         # list currently banned IPs
+sip-shield test <ip>      # would this IP pass the GeoIP filter?
+sip-shield ranges         # how many country ranges are loaded
+sip-shield rules          # show the active SIP Shield iptables rules
+sip-shield config         # edit per-host config, then reminds you to update
+sip-shield logs [n]       # last n ban-log lines
+sip-shield help
 ```
 
-If `lib/known-ips.txt` doesn't exist, the install skips this step.
-
-## Useful commands
-
-```bash
-# fail2ban status
-fail2ban-client status asterisk
-
-# how many country ranges are currently loaded
-ipset list allowed_ranges | wc -l
-
-# manually ban an IP
-fail2ban-client set asterisk banip <IP>
-
-# manually refresh the country's IP ranges
-bash lib/update.sh
-
-# view active GeoIP rules
-iptables -L INPUT -n | grep allowed_ranges
-```
-
-## Updates
-
-The target country's IP ranges refresh automatically on the 1st of every month at 03:00, via a cron entry created by `install.sh`. Logged to `/var/log/sip-shield-update.log`.
-
-Manual refresh:
-
-```bash
-bash lib/update.sh
-```
-
-Ban/unban history is logged separately, to `/var/log/sip-shield.log`:
-
-```
-[2026-06-12 13:45:22] BAN ip=203.0.113.50 origin=known-ips-list
-[2026-06-12 13:47:10] BAN ip=203.0.113.77 origin=fail2ban jail=asterisk
-[2026-06-12 14:02:55] UNBAN ip=203.0.113.77 origin=fail2ban jail=asterisk
-```
-
-## Structure
-
-```
-sip-shield/
-├── README.md
-├── README.pt-br.md
-├── install.sh
-└── lib/
-    ├── config.sh
-    ├── detect.sh
-    ├── fail2ban.sh
-    ├── geoip.sh
-    ├── metrics.sh
-    ├── record-event.sh
-    ├── stats.sh
-    ├── update.sh
-    └── known-ips.txt.example
-```
-
-## Observability
-
-Three additive outputs — none of them change the blocking logic, and all are safe to leave disabled.
-
-**Human-readable summary**
-
-```bash
-bash lib/stats.sh
-```
+`sip-shield status` example:
 
 ```
 SIP Shield
 ────────────────────────────────────────
-Target country:        BR
-SIP port:               5060
+Target country:         BR
+Asterisk ports:         5060/udp 5061/tcp
 Allowed ranges loaded:  12927
 Packets dropped:        128291
 Data dropped:           9.37 MB
 Currently banned (f2b): 7
 Total bans logged:      42
+Mgmt-port hardening:    on (3306 5038)
 ────────────────────────────────────────
 ```
 
-**Prometheus metrics**
+## Configuration
 
-Written automatically to `SIP_SHIELD_PROM_TEXTFILE_DIR` (default `/var/lib/sip-shield/metrics/sip_shield.prom`) on install, and refreshed every 5 minutes via a cron entry `install.sh` sets up. Point node_exporter's textfile collector at that directory and Prometheus picks the metrics up on its normal scrape interval — Grafana then reads from Prometheus, no separate Grafana integration needed:
+Per-host settings live in `/etc/sip-shield/sip-shield.conf`, created at install and **never overwritten** by a reinstall. Edit it directly (or via `sip-shield config`), then apply with `sip-shield update`.
+
+| Key | Meaning |
+|---|---|
+| `SIP_SHIELD_COUNTRY` | ISO 3166-1 alpha-2 code of the country to allow. |
+| `TRUNK_IPS` | SIP trunk / DID provider(s): allowed on everything, never banned. |
+| `TRUSTED_IPS` | Management IPs outside the country: allowed on everything, never banned. |
+| `F2B_IGNORE_IPS` | Fixed customer IPs: never banned, **but** still subject to GeoIP and management-port hardening. Use this, not `TRUSTED_IPS`, for a customer. |
+| `GEOIP_ALLOW_NETS` | Foreign CIDRs treated as in-country (e.g. a messaging provider's PJSIP trunk). |
+| `HARDEN_MGMT_PORTS` | `1` (default) restricts management ports to localhost; `0` disables. |
+| `MGMT_PORTS` | Ports restricted to localhost (default `3306 5038`). |
+
+Precedence: environment variables in the current shell > the config file > built-in defaults. This is what lets the same code run interactively, from Ansible, and from cron.
+
+### Known-IPs pre-ban (optional)
 
 ```bash
-export SIP_SHIELD_PROM_TEXTFILE_DIR="/var/lib/node_exporter/textfile_collector"  # example
+cp lib/known-ips.txt.example lib/known-ips.txt
+# edit with IPs from your own logs; if the file is absent, the step is skipped
 ```
 
-Metrics exposed: `sip_shield_geoip_dropped_packets_total`, `sip_shield_geoip_dropped_bytes_total`, `sip_shield_allowed_country_ranges`, `sip_shield_fail2ban_banned_ips`, `sip_shield_known_ips_loaded`, `sip_shield_bans_logged_total`.
+## Observability
 
-**JSON structured log**
+Three additive outputs — none change the blocking logic, all safe to leave off.
 
-Every ban/unban is also logged as one JSON object per line, alongside the existing plain-text log — pick this up with any log shipper or SIEM that can tail a file (Filebeat, Wazuh, Splunk forwarder, etc.):
+**Prometheus** — a `.prom` textfile is written on install and refreshed every 5 minutes by cron. Point node_exporter's textfile collector at `SIP_SHIELD_PROM_TEXTFILE_DIR` (default `/var/lib/sip-shield/metrics`) and Prometheus scrapes it normally; Grafana reads from Prometheus. Metrics: `sip_shield_geoip_dropped_packets_total`, `sip_shield_geoip_dropped_bytes_total`, `sip_shield_allowed_country_ranges`, `sip_shield_fail2ban_banned_ips`, `sip_shield_known_ips_loaded`, `sip_shield_bans_logged_total`, `sip_shield_mgmt_ports_hardened`.
 
-```bash
-export SIP_SHIELD_JSON_LOG="/var/log/sip-shield.jsonl"  # default shown
-```
+**JSON log** — every ban/unban as one JSON object per line, for any log shipper/SIEM:
 
 ```json
 {"timestamp":"2026-06-12T13:45:22Z","event":"ban","ip":"203.0.113.50","origin":"fail2ban"}
 ```
 
-**Generic webhook**
-
-Fires a JSON POST on every ban/unban if configured — works with Telegram (via a bot's `sendMessage`-compatible relay), Slack incoming webhooks, Discord webhooks, or any custom endpoint:
+**Webhook** — fire-and-forget JSON POST on ban/unban (Telegram/Slack/Discord/custom). A slow or failed endpoint never delays the actual ban:
 
 ```bash
 export SIP_SHIELD_WEBHOOK_URL="https://your-endpoint.example/webhook"
 ```
 
-The webhook call is fire-and-forget: a failed or slow endpoint never blocks or delays the actual ban/unban.
+## Files
 
-## Configuration persistence
-
-`install.sh` writes the resolved configuration to `/etc/sip-shield/config.env` (permissions `600`, since it may contain a webhook URL) at the end of a successful run. This exists because `lib/update.sh` (via cron) and the fail2ban ban/unban action don't inherit environment variables from your interactive shell — without this, both would silently fail to find `SIP_SHIELD_COUNTRY` outside of the install session. Environment variables in the current shell always take precedence over this file; it's purely a fallback for non-interactive contexts.
+| Path | What it is |
+|---|---|
+| `/opt/sip-shield/` | installed code |
+| `/usr/local/bin/sip-shield` | the central command |
+| `/etc/sip-shield/sip-shield.conf` | per-host config (never overwritten) |
+| `/etc/sip-shield/allowed_ranges.txt` | downloaded country ranges |
+| `/etc/sip-shield/ipset.save` | ipset snapshot for boot |
+| `/etc/sip-shield/restore.sh` | called by `rc.local` at boot |
+| `/etc/cron.d/sip-shield` | monthly range refresh + 5-min metrics refresh |
+| `/var/log/sip-shield.log` | ban/unban log |
+| `/var/log/sip-shield.jsonl` | structured JSON events |
 
 ## Known limitations
 
-- Country-level filtering is a blunt instrument. Legitimate users traveling abroad, or using a VPN/proxy, get blocked unless whitelisted individually. That trades some legitimate-traffic friction for a large reduction in attack surface, evaluate if that fits your use case.
-- IP-to-country data (RIPE NCC, in this implementation) isn't perfectly precise or instantaneous. Ranges get reassigned between regions over time, which is why the monthly refresh exists, but there's always some lag.
-- Tested specifically on Issabel over CentOS 7 and Rocky Linux 8. Other Asterisk-based distributions likely work with minor adjustments to `lib/detect.sh` and the package manager calls in `install.sh`.
-- IPv4 only, in the current version.
-- No per-attacker country breakdown ("top attacking countries") — this project only knows whether a packet's source *is or isn't* in the allowed country, not which country a blocked packet actually came from. That would require a full IP-to-country database (e.g. MaxMind GeoLite2) instead of RIPE NCC's single-country range list — a deliberate scope decision, not an oversight.
+- Country filtering is a blunt instrument: legitimate users traveling abroad or on a VPN get blocked unless whitelisted. That trades some friction for a large cut in attack surface.
+- IP-to-country data (RIPE NCC here) isn't perfectly precise or instant; the monthly refresh reduces, but doesn't eliminate, lag.
+- No per-attacker country breakdown — this project only knows whether a source **is or isn't** in the allowed country, not which country a blocked packet came from. That would need a full IP-to-country database (e.g. MaxMind GeoLite2) rather than RIPE's single-country list.
+- Tested on Issabel over CentOS 7 and Rocky Linux 8; other Asterisk distros likely need small tweaks to `lib/detect.sh` and the package-manager calls.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

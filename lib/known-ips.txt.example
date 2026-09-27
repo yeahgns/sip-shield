@@ -1,39 +1,21 @@
 # known-ips.txt.example
 #
-# Optional list of known-bad IPs, pre-banned at install time
-# (before fail2ban has a chance to catch them from live traffic).
+# Optional list of known-bad IPs, pre-banned at install time (before fail2ban
+# has a chance to catch them from live traffic).
 #
-# These are IPs observed attacking SIP servers in real deployments —
-# useful as a starting point, not an exhaustive or currently-accurate
-# blocklist. Attacker infrastructure churns constantly; treat this as
-# a seed list, not a subscription.
+# This is a SEED LIST format, not a maintained or currently-accurate blocklist.
+# Attacker infrastructure churns constantly — treat it as a starting point and
+# populate it from your OWN logs / threat intel.
 #
-# To use: copy this file to lib/known-ips.txt (without .example) and
-# adjust it with IPs relevant to your own logs/threat intel.
+# To use: copy this file to lib/known-ips.txt (without .example) and add the
+# IPs relevant to your deployment. If lib/known-ips.txt doesn't exist, the
+# install simply skips the pre-ban step.
 #
-# One IP per line. Lines starting with # are ignored.
+# One IP per line. Lines starting with # are ignored. The addresses below are
+# from the RFC 5737 / RFC 3849 documentation ranges and are placeholders only —
+# replace them with real ones.
 
-172.110.223.197
-172.110.223.167
-31.70.86.134
-31.70.86.135
-31.70.86.142
-31.70.75.115
-31.70.84.134
-193.104.222.145
-51.178.122.178
-87.106.206.249
-160.119.76.81
-149.86.227.40
-51.38.52.76
-192.34.108.210
-138.199.2.51
-54.39.137.81
-217.154.196.156
-217.154.152.137
-45.61.185.46
-45.61.186.92
-5.135.106.93
-94.23.168.183
-51.91.177.11
-200.56.131.207
+203.0.113.10
+203.0.113.11
+198.51.100.23
+192.0.2.44
