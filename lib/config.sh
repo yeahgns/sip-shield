@@ -101,9 +101,38 @@ load_config() {
 ripe_url() { echo "${RIPE_URL}${SIP_SHIELD_COUNTRY}"; }
 
 # Write the per-host config file once. Never overwrites an existing file.
+# Ensure a single key exists in an existing config file; append it if missing.
+# Used to migrate configs written by older versions that lacked some keys
+# (e.g. the old project stored no SIP_SHIELD_COUNTRY), without clobbering values
+# the operator already set.
+_ensure_conf_key() {
+    local key="$1" val="$2"
+    grep -qE "^[[:space:]]*${key}=" "$CONF_FILE" 2>/dev/null && return 0
+    printf '%s="%s"\n' "$key" "$val" >> "$CONF_FILE"
+    echo "[+] Added missing '$key' to $CONF_FILE"
+}
+
 write_default_config() {
-    [ -f "$CONF_FILE" ] && return 0
     mkdir -p "$GEOIP_DIR"
+    # If a config already exists (possibly from an older version), don't rewrite
+    # it — just top up any keys it's missing, so upgrades never lose settings.
+    if [ -f "$CONF_FILE" ]; then
+        _ensure_conf_key SIP_SHIELD_COUNTRY   "$SIP_SHIELD_COUNTRY"
+        _ensure_conf_key TRUNK_IPS            "$TRUNK_IPS"
+        _ensure_conf_key TRUSTED_IPS          "$TRUSTED_IPS"
+        _ensure_conf_key F2B_IGNORE_IPS       "$F2B_IGNORE_IPS"
+        _ensure_conf_key GEOIP_ALLOW_NETS     "$GEOIP_ALLOW_NETS"
+        _ensure_conf_key HARDEN_MGMT_PORTS    "$HARDEN_MGMT_PORTS"
+        _ensure_conf_key MGMT_PORTS           "$MGMT_PORTS"
+        _ensure_conf_key SIP_SHIELD_MAXRETRY  "$SIP_SHIELD_MAXRETRY"
+        _ensure_conf_key SIP_SHIELD_FINDTIME  "$SIP_SHIELD_FINDTIME"
+        _ensure_conf_key SIP_SHIELD_BANTIME   "$SIP_SHIELD_BANTIME"
+        _ensure_conf_key SIP_SHIELD_JSON_LOG  "$SIP_SHIELD_JSON_LOG"
+        _ensure_conf_key SIP_SHIELD_WEBHOOK_URL "$SIP_SHIELD_WEBHOOK_URL"
+        _ensure_conf_key SIP_SHIELD_PROM_TEXTFILE_DIR "$SIP_SHIELD_PROM_TEXTFILE_DIR"
+        chmod 600 "$CONF_FILE"
+        return 0
+    fi
     cat > "$CONF_FILE" << EOC
 # SIP Shield — per-host configuration. NOT overwritten by reinstall/upgrade.
 # Separate multiple IPs with spaces. After editing: bash $INSTALL_DIR/lib/update.sh

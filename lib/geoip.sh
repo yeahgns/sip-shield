@@ -238,11 +238,18 @@ apply_iptables_rules() {
 # from anything except loopback — independent of country. Idempotent.
 harden_mgmt_ports() {
     [ "${HARDEN_MGMT_PORTS:-1}" = "1" ] || { echo "[*] Management-port hardening disabled"; return 0; }
-    local port
+    local port rule
     for port in $MGMT_PORTS; do
-        # Remove any previous copy first (idempotency), then insert just below the
-        # GeoIP block so trunk/trusted ACCEPTs above still win for those IPs.
-        _ipt_del_matching "^-A INPUT -p tcp -m tcp --dport ${port} ! -s 127\.0\.0\.1/32 .*-j DROP$"
+        # Remove any previous copy first (idempotency). iptables -S may print the
+        # arguments in a different order than we wrote them (e.g. '! -s' before
+        # '--dport'), so match by the pieces that identify the rule rather than by
+        # a fixed argument order: it targets this port, excludes loopback, DROPs.
+        iptables -S INPUT 2>/dev/null \
+            | grep -E -- "--dport ${port}( |\b)" \
+            | grep -E -- '! -s 127\.0\.0\.1/32' \
+            | grep -E -- '-j DROP' \
+            | while IFS= read -r rule; do eval "iptables -D ${rule#-A }" 2>/dev/null || true; done
+        # Insert just below the GeoIP block so trunk/trusted ACCEPTs above still win.
         iptables -A INPUT -p tcp --dport "$port" ! -s 127.0.0.1 -m state --state NEW -j DROP
     done
     echo "[+] Management ports restricted to localhost: $MGMT_PORTS"

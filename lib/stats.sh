@@ -34,7 +34,9 @@ mgmt_state="off"
 if [[ "${HARDEN_MGMT_PORTS:-1}" == "1" ]]; then
     mgmt_state="on ($MGMT_PORTS)"
     for port in $MGMT_PORTS; do
-        iptables -S INPUT 2>/dev/null | grep -qE -- "--dport ${port} ! -s 127\.0\.0\.1/32 .*-j DROP" \
+        iptables -S INPUT 2>/dev/null \
+            | grep -E -- "--dport ${port}( |\\b)" \
+            | grep -qE -- '! -s 127\.0\.0\.1/32' \
             || mgmt_state="DEGRADED — $port not restricted"
     done
 fi

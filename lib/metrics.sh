@@ -79,7 +79,7 @@ write_prometheus_metrics() {
     local mgmt_hardened=1 port
     if [[ "${HARDEN_MGMT_PORTS:-1}" == "1" ]]; then
         for port in $MGMT_PORTS; do
-            iptables -S INPUT 2>/dev/null | grep -qE -- "--dport ${port} ! -s 127\.0\.0\.1/32 .*-j DROP" || mgmt_hardened=0
+            iptables -S INPUT 2>/dev/null | grep -E -- "--dport ${port}( |\\b)" | grep -qE -- '! -s 127\.0\.0\.1/32' || mgmt_hardened=0
         done
     else
         mgmt_hardened=0
