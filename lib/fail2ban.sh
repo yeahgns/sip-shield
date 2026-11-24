@@ -14,8 +14,6 @@ LOG_FILE="/var/log/sip-shield.log"
 log_ban() {
     local ip="$1" origin="${2:-manual}"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] BAN ip=$ip origin=$origin" >> "$LOG_FILE"
-    # Additive observability hook (JSON log + webhook). No-op if not configured.
-    record_event "ban" "$ip" "$origin" 2>/dev/null || true
 }
 
 configure_fail2ban() {
@@ -114,15 +112,14 @@ unban_protected_ips() {
     done
 }
 
-# Ban-logging action. Also calls record-event.sh so bans reach the JSON log and
-# webhook even though fail2ban actions run as plain shell (they don't source us).
+# Ban-logging action: every fail2ban ban/unban also goes to /var/log/sip-shield.log.
 setup_ban_action() {
     local f=/etc/fail2ban/action.d/sip-shield-log.conf tmp
     tmp=$(mktemp)
     cat > "$tmp" << EOA
 [Definition]
-actionban = echo "[\$(date '+%%Y-%%m-%%d %%H:%%M:%%S')] BAN ip=<ip> origin=fail2ban jail=<name>" >> /var/log/sip-shield.log; bash ${INSTALL_DIR}/lib/record-event.sh ban <ip> fail2ban >/dev/null 2>&1 || true
-actionunban = echo "[\$(date '+%%Y-%%m-%%d %%H:%%M:%%S')] UNBAN ip=<ip> origin=fail2ban jail=<name>" >> /var/log/sip-shield.log; bash ${INSTALL_DIR}/lib/record-event.sh unban <ip> fail2ban >/dev/null 2>&1 || true
+actionban = echo "[\$(date '+%%Y-%%m-%%d %%H:%%M:%%S')] BAN ip=<ip> origin=fail2ban jail=<name>" >> /var/log/sip-shield.log
+actionunban = echo "[\$(date '+%%Y-%%m-%%d %%H:%%M:%%S')] UNBAN ip=<ip> origin=fail2ban jail=<name>" >> /var/log/sip-shield.log
 EOA
     if cmp -s "$tmp" "$f"; then rm -f "$tmp"; return 1; fi
     mv -f "$tmp" "$f"; chmod 644 "$f"

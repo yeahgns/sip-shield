@@ -72,11 +72,6 @@ SIP_SHIELD_KNOWN_IPS_FILE="${SIP_SHIELD_KNOWN_IPS_FILE:-$INSTALL_DIR/lib/known-i
 # the whole country's access if RIPE returns an empty/broken response.
 MIN_RANGES="${SIP_SHIELD_MIN_RANGES:-5000}"
 
-# ─── Observability (all optional, all safe to leave at defaults) ──────────────
-SIP_SHIELD_JSON_LOG="${SIP_SHIELD_JSON_LOG:-/var/log/sip-shield.jsonl}"
-SIP_SHIELD_WEBHOOK_URL="${SIP_SHIELD_WEBHOOK_URL:-}"
-SIP_SHIELD_PROM_TEXTFILE_DIR="${SIP_SHIELD_PROM_TEXTFILE_DIR:-/var/lib/sip-shield/metrics}"
-
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 # Load the persisted per-host config, without letting it clobber values already
@@ -127,9 +122,6 @@ write_default_config() {
         _ensure_conf_key SIP_SHIELD_MAXRETRY  "$SIP_SHIELD_MAXRETRY"
         _ensure_conf_key SIP_SHIELD_FINDTIME  "$SIP_SHIELD_FINDTIME"
         _ensure_conf_key SIP_SHIELD_BANTIME   "$SIP_SHIELD_BANTIME"
-        _ensure_conf_key SIP_SHIELD_JSON_LOG  "$SIP_SHIELD_JSON_LOG"
-        _ensure_conf_key SIP_SHIELD_WEBHOOK_URL "$SIP_SHIELD_WEBHOOK_URL"
-        _ensure_conf_key SIP_SHIELD_PROM_TEXTFILE_DIR "$SIP_SHIELD_PROM_TEXTFILE_DIR"
         chmod 600 "$CONF_FILE"
         return 0
     fi
@@ -165,13 +157,8 @@ MGMT_PORTS="$MGMT_PORTS"
 SIP_SHIELD_MAXRETRY="$SIP_SHIELD_MAXRETRY"
 SIP_SHIELD_FINDTIME="$SIP_SHIELD_FINDTIME"
 SIP_SHIELD_BANTIME="$SIP_SHIELD_BANTIME"
-
-# Observability (optional). Webhook empty = disabled.
-SIP_SHIELD_JSON_LOG="$SIP_SHIELD_JSON_LOG"
-SIP_SHIELD_WEBHOOK_URL="$SIP_SHIELD_WEBHOOK_URL"
-SIP_SHIELD_PROM_TEXTFILE_DIR="$SIP_SHIELD_PROM_TEXTFILE_DIR"
 EOC
-    chmod 600 "$CONF_FILE"   # may hold a webhook URL; treat as sensitive
+    chmod 600 "$CONF_FILE"
     echo "[+] Config created: $CONF_FILE"
 }
 

@@ -71,7 +71,6 @@ load_config
 source "$INSTALL_DIR/lib/detect.sh"
 source "$INSTALL_DIR/lib/geoip.sh"
 source "$INSTALL_DIR/lib/fail2ban.sh"
-source "$INSTALL_DIR/lib/metrics.sh"
 
 # Write the per-host config file (once) and re-load so downstream sees it.
 write_default_config
@@ -100,9 +99,8 @@ echo "--- fail2ban ---"
 configure_fail2ban || echo "[!] Check fail2ban (GeoIP is already active)"
 echo ""
 
-echo "--- Observability ---"
-write_prometheus_metrics && echo "[+] Prometheus metrics written to ${SIP_SHIELD_PROM_TEXTFILE_DIR}/sip_shield.prom"
-echo ""
+# Leftovers from the removed observability feature (JSON log, webhook, Prometheus).
+rm -rf /var/lib/sip-shield/metrics /var/log/sip-shield.jsonl /var/log/sip-shield-metrics.log 2>/dev/null || true
 
 echo "--- Central command ---"
 install -m 755 "$INSTALL_DIR/lib/cli.sh" /usr/local/bin/sip-shield \

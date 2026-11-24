@@ -12,7 +12,6 @@ source "$INSTALL_DIR/lib/config.sh" 2>/dev/null || { echo "SIP Shield not instal
 load_config
 source "$INSTALL_DIR/lib/detect.sh"
 source "$INSTALL_DIR/lib/geoip.sh"
-source "$INSTALL_DIR/lib/metrics.sh"
 
 cmd="${1:-status}"; shift 2>/dev/null || true
 
@@ -61,7 +60,7 @@ sip-shield — GeoIP + fail2ban protection for Issabel/Asterisk
 
 Usage: sip-shield <command> [args]
 
-  status            Show current state (default). Also refreshes metrics.
+  status            Show current state (default).
   update            Refresh country ranges now and re-apply rules.
   ban <ip>          Ban an IP in the asterisk jail.
   unban <ip>        Unban an IP.

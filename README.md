@@ -30,7 +30,6 @@ The GeoIP block sits at the very top of `INPUT` and only matches **new** connect
 - **Atomic updates** — the target country's ranges refresh monthly via RIPE NCC using `ipset swap`, so there's never an unprotected window; if RIPE fails or returns a short list, the current ranges are kept.
 - **Anti-lockout** — if the IP you're connected from via SSH would be blocked, the install aborts before touching the firewall (override with `SIP_SHIELD_FORCE=1`).
 - **Known-IPs pre-ban** (optional) — seed a list of known-bad IPs to ban at install time.
-- **Observability** — structured JSON log, generic webhook, and Prometheus textfile metrics. All additive, all optional.
 
 ## Compatibility
 
@@ -54,7 +53,7 @@ cd sip-shield
 sudo bash install.sh --wizard
 ```
 
-The wizard asks for the target country, trunk/trusted/customer IPs, management-port hardening, optional webhook, and fail2ban tuning, shows a summary, and applies everything.
+The wizard asks for the target country, trunk/trusted/customer IPs, management-port hardening, and fail2ban tuning, shows a summary, and applies everything.
 
 **Non-interactive** (automation / Ansible):
 
@@ -124,24 +123,6 @@ cp lib/known-ips.txt.example lib/known-ips.txt
 # edit with IPs from your own logs; if the file is absent, the step is skipped
 ```
 
-## Observability
-
-Three additive outputs — none change the blocking logic, all safe to leave off.
-
-**Prometheus** — a `.prom` textfile is written on install and refreshed every 5 minutes by cron. Point node_exporter's textfile collector at `SIP_SHIELD_PROM_TEXTFILE_DIR` (default `/var/lib/sip-shield/metrics`) and Prometheus scrapes it normally; Grafana reads from Prometheus. Metrics: `sip_shield_geoip_dropped_packets_total`, `sip_shield_geoip_dropped_bytes_total`, `sip_shield_allowed_country_ranges`, `sip_shield_fail2ban_banned_ips`, `sip_shield_known_ips_loaded`, `sip_shield_bans_logged_total`, `sip_shield_mgmt_ports_hardened`.
-
-**JSON log** — every ban/unban as one JSON object per line, for any log shipper/SIEM:
-
-```json
-{"timestamp":"2026-06-12T13:45:22Z","event":"ban","ip":"203.0.113.50","origin":"fail2ban"}
-```
-
-**Webhook** — fire-and-forget JSON POST on ban/unban (Telegram/Slack/Discord/custom). A slow or failed endpoint never delays the actual ban:
-
-```bash
-export SIP_SHIELD_WEBHOOK_URL="https://your-endpoint.example/webhook"
-```
-
 ## Files
 
 | Path | What it is |
@@ -152,9 +133,8 @@ export SIP_SHIELD_WEBHOOK_URL="https://your-endpoint.example/webhook"
 | `/etc/sip-shield/allowed_ranges.txt` | downloaded country ranges |
 | `/etc/sip-shield/ipset.save` | ipset snapshot for boot |
 | `/etc/sip-shield/restore.sh` | called by `rc.local` at boot |
-| `/etc/cron.d/sip-shield` | monthly range refresh + 5-min metrics refresh |
+| `/etc/cron.d/sip-shield` | monthly country-range refresh |
 | `/var/log/sip-shield.log` | ban/unban log |
-| `/var/log/sip-shield.jsonl` | structured JSON events |
 
 ## Known limitations
 

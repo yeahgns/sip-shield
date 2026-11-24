@@ -72,10 +72,6 @@ run_wizard() {
         HARDEN_MGMT_PORTS=0
     fi
 
-    echo ""
-    if _ask_yn "Configure a webhook for ban/unban notifications (Telegram/Slack/etc.)?" "N"; then
-        SIP_SHIELD_WEBHOOK_URL=$(_ask "  Webhook URL" "$SIP_SHIELD_WEBHOOK_URL")
-    fi
 
     echo ""
     echo "fail2ban tuning (Enter to keep defaults):"
@@ -93,7 +89,6 @@ run_wizard() {
     echo "  Customer IPs         : ${F2B_IGNORE_IPS:-<none>}"
     echo "  Allow-nets           : ${GEOIP_ALLOW_NETS:-<none>}"
     echo "  Harden mgmt ports    : $([ "$HARDEN_MGMT_PORTS" = 1 ] && echo "yes ($MGMT_PORTS)" || echo no)"
-    echo "  Webhook              : ${SIP_SHIELD_WEBHOOK_URL:-<none>}"
     echo "  fail2ban             : maxretry=$SIP_SHIELD_MAXRETRY findtime=$SIP_SHIELD_FINDTIME bantime=$SIP_SHIELD_BANTIME"
     echo "──────────────────────────────────────────────"
     echo ""
@@ -103,6 +98,6 @@ run_wizard() {
     fi
     # Export so the rest of install.sh (and write_default_config) sees them.
     export SIP_SHIELD_COUNTRY TRUNK_IPS TRUSTED_IPS F2B_IGNORE_IPS GEOIP_ALLOW_NETS
-    export HARDEN_MGMT_PORTS MGMT_PORTS SIP_SHIELD_WEBHOOK_URL
+    export HARDEN_MGMT_PORTS MGMT_PORTS
     export SIP_SHIELD_MAXRETRY SIP_SHIELD_FINDTIME SIP_SHIELD_BANTIME
 }

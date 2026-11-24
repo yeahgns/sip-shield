@@ -290,10 +290,8 @@ install_cron() {
     # Monthly range refresh, minute/hour randomized so a fleet doesn't hit RIPE
     # all at once.
     echo "$((RANDOM % 60)) $((2 + RANDOM % 4)) 1 * * root /bin/bash $INSTALL_DIR/lib/update.sh >> /var/log/sip-shield-update.log 2>&1" > "$f"
-    # Metrics refresh every 5 minutes (Prometheus textfile).
-    echo "*/5 * * * * root /bin/bash $INSTALL_DIR/lib/stats.sh --refresh-only >> /var/log/sip-shield-metrics.log 2>&1" >> "$f"
     chmod 644 "$f"
-    echo "[+] Cron installed ($f): monthly range refresh + 5-min metrics refresh"
+    echo "[+] Cron installed ($f): monthly range refresh"
 }
 
 setup_geoip() {

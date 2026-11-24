@@ -3,22 +3,13 @@
 #  stats.sh — Human-readable summary of SIP Shield's current state.
 #
 #  Usage:
-#    bash lib/stats.sh                 # print summary (also refreshes metrics)
-#    bash lib/stats.sh --refresh-only  # refresh Prometheus textfile only (cron)
+#    bash lib/stats.sh                 # print summary
 # ============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "$SCRIPT_DIR/lib/config.sh"
 load_config
 source "$SCRIPT_DIR/lib/detect.sh"
-source "$SCRIPT_DIR/lib/metrics.sh"
-
-if [[ "${1:-}" == "--refresh-only" ]]; then
-    write_prometheus_metrics
-    exit $?
-fi
-
-write_prometheus_metrics 2>/dev/null || true
 
 rule_stats=$(iptables -L INPUT -v -n -x 2>/dev/null | grep "match-set ${BR_IPSET} src" | grep DROP | head -1)
 dropped_packets=$(echo "$rule_stats" | awk '{print $1}'); dropped_packets="${dropped_packets:-0}"
@@ -28,7 +19,7 @@ banned_ips=$(fail2ban-client status asterisk 2>/dev/null | grep "Currently banne
 banned_ips="${banned_ips:-0}"
 
 total_bans_logged=0
-[[ -f "$JSON_LOG_FILE" ]] && total_bans_logged=$(grep -c '"event":"ban"' "$JSON_LOG_FILE" 2>/dev/null || echo 0)
+[[ -f /var/log/sip-shield.log ]] && total_bans_logged=$(grep -c ' BAN ip=' /var/log/sip-shield.log 2>/dev/null || echo 0)
 
 mgmt_state="off"
 if [[ "${HARDEN_MGMT_PORTS:-1}" == "1" ]]; then
