@@ -100,7 +100,8 @@ configure_fail2ban || echo "[!] Check fail2ban (GeoIP is already active)"
 echo ""
 
 # Leftovers from the removed observability feature (JSON log, webhook, Prometheus).
-rm -rf /var/lib/sip-shield/metrics /var/log/sip-shield.jsonl /var/log/sip-shield-metrics.log 2>/dev/null || true
+rm -rf /var/lib/sip-shield/metrics /var/log/sip-shield.jsonl /var/log/sip-shield-metrics.log \
+       "$INSTALL_DIR/lib/metrics.sh" "$INSTALL_DIR/lib/record-event.sh" 2>/dev/null || true
 
 echo "--- Central command ---"
 install -m 755 "$INSTALL_DIR/lib/cli.sh" /usr/local/bin/sip-shield \

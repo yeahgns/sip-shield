@@ -28,6 +28,8 @@ The GeoIP block sits at the very top of `INPUT` and only matches **new** connect
 - **Management-port hardening** — restricts MySQL (`3306`) and the Asterisk Manager Interface (`5038`) to localhost regardless of country, so an in-country attacker can't reach them either. On by default; configurable.
 - **fail2ban** — second layer, bans brute-force attempts from anywhere, including the allowed country. Loopback, trunks and trusted IPs are never banned by any jail.
 - **Atomic updates** — the target country's ranges refresh monthly via RIPE NCC using `ipset swap`, so there's never an unprotected window; if RIPE fails or returns a short list, the current ranges are kept.
+- **Self-healing** — every 5 minutes `lib/ensure.sh` checks that the GeoIP rule and the management-port hardening are still at the top of `INPUT` (Issabel's own firewall, for instance, rewrites iptables) and puts them back if they are gone, logging to `/var/log/sip-shield.log`. When all is in place it touches nothing.
+- **Legacy migration** — old per-port rules and the old ipset (`br_ranges`) are removed on install, without duplicating rules.
 - **Anti-lockout** — if the IP you're connected from via SSH would be blocked, the install aborts before touching the firewall (override with `SIP_SHIELD_FORCE=1`).
 - **Known-IPs pre-ban** (optional) — seed a list of known-bad IPs to ban at install time.
 
@@ -133,7 +135,7 @@ cp lib/known-ips.txt.example lib/known-ips.txt
 | `/etc/sip-shield/allowed_ranges.txt` | downloaded country ranges |
 | `/etc/sip-shield/ipset.save` | ipset snapshot for boot |
 | `/etc/sip-shield/restore.sh` | called by `rc.local` at boot |
-| `/etc/cron.d/sip-shield` | monthly country-range refresh |
+| `/etc/cron.d/sip-shield` | monthly country-range refresh + 5-min rule check |
 | `/var/log/sip-shield.log` | ban/unban log |
 
 ## Known limitations

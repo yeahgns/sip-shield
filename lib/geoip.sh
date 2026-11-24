@@ -290,8 +290,27 @@ install_cron() {
     # Monthly range refresh, minute/hour randomized so a fleet doesn't hit RIPE
     # all at once.
     echo "$((RANDOM % 60)) $((2 + RANDOM % 4)) 1 * * root /bin/bash $INSTALL_DIR/lib/update.sh >> /var/log/sip-shield-update.log 2>&1" > "$f"
+    # Every 5 minutes: put the GeoIP / mgmt-port rules back if something removed them
+    # (e.g. Issabel's own firewall rewriting iptables). Silent when all is in place.
+    echo "*/5 * * * * root /bin/bash $INSTALL_DIR/lib/ensure.sh >/dev/null 2>&1" >> "$f"
     chmod 644 "$f"
-    echo "[+] Cron installed ($f): monthly range refresh"
+    echo "[+] Cron installed ($f): monthly range refresh + 5-min rule check"
+}
+
+# Old model (ipset "br_ranges", per-port rules): remove its rules, the old set and its
+# range file, so they never coexist with the current all-ports rule. Safe to re-run.
+migrate_legacy() {
+    local old=br_ranges
+    [ "$old" = "$BR_IPSET" ] && return 0
+    if iptables -S INPUT 2>/dev/null | grep -q -- "--match-set $old "; then
+        _ipt_del_matching "match-set $old "
+        echo "[+] Old per-port GeoIP rules (ipset $old) removed"
+    fi
+    if ipset list -n 2>/dev/null | grep -qx "$old"; then
+        ipset destroy "$old" 2>/dev/null && echo "[+] Old ipset $old removed" \
+            || echo "[!] Old ipset $old is still referenced by some rule; left in place"
+    fi
+    rm -f "$GEOIP_DIR/br_ranges.txt"
 }
 
 setup_geoip() {
@@ -302,6 +321,7 @@ setup_geoip() {
     fi
     load_ipset       || { echo "[!] Aborting without touching the firewall."; return 1; }
     save_ipset
+    migrate_legacy
     apply_iptables_rules || { echo "[!] Rules NOT applied."; return 1; }
     install_restore_hook
     install_cron
