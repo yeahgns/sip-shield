@@ -289,7 +289,8 @@ install_cron() {
     sed -i '/sip-shield/d' /etc/crontab 2>/dev/null || true
     # Monthly range refresh, minute/hour randomized so a fleet doesn't hit RIPE
     # all at once.
-    echo "$((RANDOM % 60)) $((2 + RANDOM % 4)) 1 * * root /bin/bash $INSTALL_DIR/lib/update.sh >> /var/log/sip-shield-update.log 2>&1" > "$f"
+    echo "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" > "$f"
+    echo "$((RANDOM % 60)) $((2 + RANDOM % 4)) 1 * * root /bin/bash $INSTALL_DIR/lib/update.sh >> /var/log/sip-shield-update.log 2>&1" >> "$f"
     # Every 5 minutes: put the GeoIP / mgmt-port rules back if something removed them
     # (e.g. Issabel's own firewall rewriting iptables). Silent when all is in place.
     echo "*/5 * * * * root /bin/bash $INSTALL_DIR/lib/ensure.sh >/dev/null 2>&1" >> "$f"
