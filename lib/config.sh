@@ -16,6 +16,11 @@
 #  running install.sh non-interactively.
 # ============================================================================
 
+# Every entry point (cron, rc.local, CLI) sources this file. Make sure the sbin
+# directories are in PATH no matter who called us: cron's default PATH has no
+# iptables/ipset, which made ensure.sh/update.sh fail silently.
+case ":$PATH:" in *:/usr/sbin:*) ;; *) export PATH="/usr/local/sbin:/usr/sbin:/sbin:$PATH" ;; esac
+
 # ─── Paths ──────────────────────────────────────────────────────────────────
 GEOIP_DIR="/etc/sip-shield"          # runtime state (ranges, ipset save, config)
 INSTALL_DIR="/opt/sip-shield"        # where the code is installed (cron/boot use this)
